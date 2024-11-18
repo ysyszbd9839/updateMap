@@ -1,32 +1,37 @@
 <script setup>
-import HelloWorld from "./components/HelloWorld.vue";
+import { onMounted, ref } from "vue"
+import yhData from "./assets/yhlitemap_11.04.13.36.json"
+let SVG = null;
+onMounted(() => {
+  SVG = document.getElementById("svgBox")
+  console.log(SVG, yhData);
+  yhData.segments.forEach((item, index) => {
+    if(item.marking_list.length) {
+
+    }
+  })
+})
+const mouseDown = (e) => {
+  console.log(e, 'e-');
+  
+}
 </script>
 
 <template>
-  <div>
-    <svg xmlns="http://www.w3.org/2000/svg" version="1.1" id="svg">
-      <line
-        x1="0"
-        y1="0"
-        x2="200"
-        y2="200"
-        style="stroke: rgb(255, 0, 0); stroke-width: 2"
-      />
+  <div class="main_box">
+    <svg  xmlns="http://www.w3.org/2000/svg" version="1.1" id="svgBox">
+      <polyline points="50,50 100,150 150,100 200,200" fill="none" stroke="black" stroke-width="6" @mousedown="mouseDown" class="line_css"/>
     </svg>
   </div>
 </template>
 
 <style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+.main_box {
+  width: 100vw;
+  height: 100vh;
+
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
+.line_css {
+  cursor: pointer;
 }
 </style>
