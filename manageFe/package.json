@@ -9,10 +9,16 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "element-plus": "^2.8.8",
+    "proj4": "^2.14.0",
+    "three": "^0.170.0",
+    "three.meshline": "^1.4.0",
     "vue": "^3.5.12"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.1.4",
+    "unplugin-auto-import": "^0.18.5",
+    "unplugin-vue-components": "^0.27.4",
     "vite": "^5.4.10"
   }
 }

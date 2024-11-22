@@ -1,12 +1,27 @@
 body {
-    padding:0;
-    margin: 0;;
+  padding: 0;
+  margin: 0;
 }
-.main_box {
-    width: 100vw;
-    height: 100vh;
-  
-  }
-  .line_css {
-    cursor: pointer;
-  }
+
+.canvas_box {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.main_canvas {
+  /* cursor: grab; */
+  background: rgb(204, 204, 204, 0.6);
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* transform-origin: 0 0; */
+}
+
+.line_css {
+  cursor: pointer;
+}
