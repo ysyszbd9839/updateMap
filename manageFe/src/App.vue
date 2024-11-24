@@ -8,6 +8,7 @@ import { Line2 } from "three/addons/lines/Line2.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineGeometry } from "three/addons/lines/LineGeometry.js";
 import { wgs2utm } from "./utils/utils.js";
+import {StarFilled} from '@element-plus/icons-vue'
 
 let scene, camera, renderer, controls, raycaster;
 const mouse = new THREE.Vector2();
@@ -16,6 +17,8 @@ let yhCircles = new THREE.Group();
 let yhRoad = new THREE.Group();
 let origin_utm_x = 456788.630270388,
   origin_utm_y = 4426624.75945682;
+let max_p = [0, 0],
+  min_p = [0, 0];
 let colors = {
   lanes: "red",
   marking_list: "blue",
@@ -41,6 +44,11 @@ init();
 animate();
 onMounted(() => {});
 function init() {
+  ElMessage({
+    message: '右键拖动  滚轮缩放  左键选择  ',
+    type: 'warning',
+    duration: 0
+  })
   // 初始化场景
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xeeeeee);
@@ -49,10 +57,11 @@ function init() {
   camera = new THREE.PerspectiveCamera(
     75,
     window.innerWidth / window.innerHeight,
-    0.1,
-    10000
+    0.01,
+    100000
   );
-  camera.position.set(0, 0, 10);
+  // 将摄像机位置设置到合适的地方
+  camera.position.set(0, 0, 148);
 
   // 渲染器
   renderer = new THREE.WebGLRenderer();
@@ -61,6 +70,7 @@ function init() {
 
   // 轨道控制器
   controls = new OrbitControls(camera, renderer.domElement);
+  
   controls.minDistance = 0.01; // 设置最小缩放距离
   // 禁止围绕 X 和 Y 轴旋转
   controls.enableRotate = true; // 启用旋转
@@ -72,10 +82,12 @@ function init() {
     RIGHT: THREE.MOUSE.PAN, // 右键拖动画布
     MIDDLE: THREE.MOUSE.DOLLY, // 滚轮缩放
   };
-
+  
   // 保留平移和缩放
   controls.enablePan = true; // 启用平移（右键拖动）
   controls.enableZoom = true; // 启用缩放
+  controls.target.set(0, 0, 0);
+  controls.update(); // 更新控制器
 
   // 光源
   const light = new THREE.DirectionalLight(0xffffff, 1);
@@ -87,6 +99,7 @@ function init() {
   scene.add(axesHelper);
   handleRoad();
   handleDate(yhData.segments);
+  setView();
 
   // 初始化 Raycaster
   raycaster = new THREE.Raycaster();
@@ -242,9 +255,9 @@ function onKeyDown(event) {
     if (!selectData.value.lineObj) return;
     dialogVisible.value = true;
   } else if (dialogVisible.value && (event.key === "p" || event.key === "P")) {
+    delPoint();
   } else if (dialogVisible.value && (event.key === "l" || event.key === "L")) {
     delLine();
-  } else if (dialogVisible.value && (event.key === "r" || event.key === "R")) {
   }
 }
 function delPoint() {
@@ -339,7 +352,7 @@ function handleRoad() {
     const geometry = new LineGeometry();
     geometry.setPositions(arr.flat()); // 设置顶点数据
     const material = new LineMaterial({
-      color: 0x4b41d8, // 线条颜色
+      color: 0x23bac5, // 线条颜色
       linewidth: 3.4, // 设置线宽，单位是像素
       resolution: new THREE.Vector2(window.innerWidth, window.innerHeight), // 用于调整线宽的渲染分辨率
     });
@@ -379,7 +392,7 @@ function handleDate(segments) {
     if (item.marking_list.length) {
       item.marking_list.forEach((e, i) => {
         if (e.points.length) {
-          const arr = handleLineData(e.points);
+          const arr = handleLineData(e.points, true, i);
           if (selectData.value.marking_list.has(item.segmentId)) {
             const points = selectData.value.marking_list.get(item.segmentId);
             points.push(arr);
@@ -400,20 +413,35 @@ function handleDate(segments) {
     }
   });
 }
-function handleLineData(points) {
-  let arr = points.map((ele) => {
+function handleLineData(points, sign = false, index) {
+  let arr = points.map((ele, i) => {
     let p = ele.split(",");
-    return new THREE.Vector3(Number(p[0]), Number(p[1]), 0.1);
+    if(sign) {
+      if (index === 0 && i === 0) {
+        max_p = [Number(p[0]), Number(p[1])]
+        min_p = [Number(p[0]), Number(p[1])]
+      }else {
+        max_p[0] = Math.max(max_p[0], Number(p[0]))
+        max_p[1] = Math.max(max_p[1], Number(p[1]))
+        min_p[0] = Math.min(min_p[0], Number(p[0]))
+        min_p[1] = Math.min(min_p[1], Number(p[1]))
+      }
+    }
+    return new THREE.Vector3(Number(p[0]), Number(p[1]), 0);
   });
+  console.log(arr, 'arrrrrrrrrrrr');
+  
   return arr;
 }
 // 绘制线条
 function drawLine(points, color, segIndex, lineIndex, type, segmentId) {
+  const curve = new THREE.CatmullRomCurve3(points);
   const material_main = new THREE.LineBasicMaterial({
     color: color,
     linewidth: 2,
   });
-  const geometry_main = new THREE.BufferGeometry().setFromPoints(points);
+  const geometry_main = new THREE.BufferGeometry().setFromPoints(curve.getPoints(points.length * 10));
+  // const geometry_main = new THREE.BufferGeometry().setFromPoints(points);
   const line_main = new THREE.Line(geometry_main, material_main);
   line_main.name = `yh_${segIndex}_${type}_${lineIndex}`;
   line_main.userData.yhInfo = {
@@ -515,6 +543,19 @@ function clearAll() {
   selectData.value.lanes.clear();
   selectData.value.marking_list.clear();
 }
+// 设置视角
+function setView() {
+  const centerX = (min_p[0] + max_p[0]) / 2;
+  const centerY = (min_p[1] + max_p[1]) / 2;
+  const width = max_p[0] - min_p[0];
+  const height = max_p[1] - min_p[1];
+  const distance = Math.max(width, height) * 4.5; // 假设是正交投影
+  
+  camera.position.set(centerX, centerY, distance);
+  controls.target.set(centerX, centerY, 0.3);
+  camera.updateProjectionMatrix();
+  controls.update();
+}
 </script>
 
 <template>
@@ -531,12 +572,12 @@ function clearAll() {
         删除掉选定的那条线
         <el-button type="primary" @click="delLine"> 删除线 ( L ) </el-button>
       </div>
-      <div class="dialog_text">
+      <!-- <div class="dialog_text">
         <div class="text_road">删除整条道路：</div>
         删除掉选定线所在的道路<el-button type="danger" @click="delRoad">
           删除整条道路 ( R )
         </el-button>
-      </div>
+      </div> -->
     </el-dialog>
     <div class="tools_box">
       <el-button type="primary" class="upload_btn"
@@ -552,6 +593,7 @@ function clearAll() {
       </el-button>
       <el-button type="success" class="save_btn">保存文件</el-button>
     </div>
+    <el-button type="primary" class="init_btn" @click="setView">一键复位</el-button>
   </div>
 </template>
 
@@ -585,6 +627,9 @@ function clearAll() {
   justify-content: space-between;
   border-bottom: 1px solid rgba(0, 0, 0, 0.2);
 }
+.dialog_text:last-child {
+  border-bottom: 0;
+}
 .tools_box {
   position: absolute;
   top: 10px;
@@ -603,6 +648,11 @@ function clearAll() {
   height: 100%;
   background-color: #409eff;
   opacity: 0;
+}
+.init_btn {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
 }
 .save_btn {
   margin-left: 0 !important;
