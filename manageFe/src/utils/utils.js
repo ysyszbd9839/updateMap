@@ -15,3 +15,17 @@ export function wgs2utm(lon, lat) {
 export function getUTMZone(lon) {
   return Math.floor((lon + 180) / 6) + 1;
 }
+export function downFile(jsonData, name) {
+  // 将 JSON 数据转换为字符串
+  const jsonString = JSON.stringify(jsonData, null, 2);  // 格式化为美观的 JSON 字符串
+
+  // 创建一个 Blob 对象，其中 'application/json' 指定了文件类型
+  const blob = new Blob([jsonString], { type: "application/json" });
+
+  // 创建一个临时的链接元素
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);  // 使用 URL.createObjectURL 创建文件的下载链接
+  link.download = name;  // 指定下载的文件名
+  // 模拟点击下载链接
+  link.click();
+}

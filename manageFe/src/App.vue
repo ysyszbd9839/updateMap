@@ -7,8 +7,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import { Line2 } from "three/addons/lines/Line2.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineGeometry } from "three/addons/lines/LineGeometry.js";
-import { wgs2utm } from "./utils/utils.js";
-import {StarFilled} from '@element-plus/icons-vue'
+import { wgs2utm, downFile } from "./utils/utils.js";
+import { MeshLine, MeshLineMaterial } from 'three.meshline';
 
 let scene, camera, renderer, controls, raycaster;
 const mouse = new THREE.Vector2();
@@ -38,14 +38,15 @@ let selectData = ref({
   yhData = jsonData,
   isDragging = ref(false),
   dialogVisible = ref(false);
-let fileName = ref([]);
+let fileName = ref("");
+let zPoint= 1.8
 
 init();
 animate();
 onMounted(() => {});
 function init() {
   ElMessage({
-    message: '右键拖动  滚轮缩放  左键选择  ',
+    message: '右键拖动 / 滚轮缩放 / 左键选择 / 双击放大到指定位置',
     type: 'warning',
     duration: 0
   })
@@ -105,11 +106,12 @@ function init() {
   raycaster = new THREE.Raycaster();
   raycaster.setFromCamera(mouse, camera);
   // raycaster.far = 1000; // 设置一个较大的检测距离
-  raycaster.params.Line.threshold = 0.2; // 调整射线检测阈值
+  raycaster.params.Line.threshold = 0.4; // 调整射线检测阈值
 
   // 事件监听
   renderer.domElement.addEventListener("mousedown", onMouseDown);
   renderer.domElement.addEventListener("mousemove", onMouseMove);
+  renderer.domElement.addEventListener("dblclick", onDblclick);
   window.addEventListener("mouseup", onMouseUp);
   window.addEventListener("keydown", onKeyDown);
 }
@@ -149,7 +151,6 @@ function onMouseDown(event) {
         selectData.value.movePoints = selectData.value[info.lineType].get(
           info.segmentId
         )[info.lineIndex];
-        console.log(selectData.value, "selectData.value===========");
 
         handleCircles(selectData.value.data);
         selectData.value.lineObj.material.color.setStyle(colors.selectLine);
@@ -193,18 +194,13 @@ function findLine(group, name) {
 function onMouseMove(event) {
   event.preventDefault();
   if (isDragging.value) {
-    // 将鼠标坐标转换为世界坐标
-    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -0.2); // z = 0 的平面
-    const intersection = new THREE.Vector3();
-    raycaster.ray.intersectPlane(plane, intersection);
+    const intersection = getWordPoint(event.clientX, event.clientY)
     const selectedCircle = yhCircles.children[selectData.value.circleIndex];
     if (selectedCircle) {
       const attribute = selectedCircle.geometry.attributes.position;
+      
       // 更新点的坐标（假设点的索引为 0）
-      attribute.setXYZ(0, intersection.x, intersection.y, 0.2);
+      attribute.setXYZ(0, intersection.x, intersection.y, zPoint);
       attribute.needsUpdate = true;
       // 更新几何体的包围盒（确保射线检测正确）
       selectedCircle.geometry.computeBoundingBox();
@@ -250,6 +246,25 @@ function onMouseUp(event) {
     // handleDate(yhData.segments);
   }
 }
+// 双击事件
+function onDblclick(event) {
+  console.log(event, 'eeee', getWordPoint(event.clientX, event.clientY));
+  const point = getWordPoint(event.clientX, event.clientY)
+  camera.position.set(point.x, point.y, 60);
+  controls.target.set(point.x, point.y, 0.3);
+  camera.updateProjectionMatrix();
+  controls.update();
+}
+function getWordPoint(clientX, clientY) {
+  // 将鼠标坐标转换为世界坐标
+  mouse.x = (clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -zPoint); // z = 0 的平面
+  const intersection = new THREE.Vector3();
+  raycaster.ray.intersectPlane(plane, intersection);
+  return intersection;
+}
 function onKeyDown(event) {
   if (event.key === "Backspace" || event.key === "Delete") {
     if (!selectData.value.lineObj) return;
@@ -266,10 +281,6 @@ function delPoint() {
     selectData.value;
 
   movePoints.splice(circleIndex, 1);
-  // yhData.segments[info.segIndex][info.lineType][info.lineIndex].points.splice(
-  //   circleIndex,
-  //   1
-  // );
   let points = selectData.value[selectData.value.info.lineType].get(
     selectData.value.info.segmentId
   );
@@ -371,7 +382,9 @@ function handleRoad() {
     scene.add(yhRoad);
   });
 }
-function drawWLine() {}
+function drawWLine() {
+
+}
 function handleDate(segments) {
   segments.forEach((item, index) => {
     if (item.lanes.length) {
@@ -429,19 +442,18 @@ function handleLineData(points, sign = false, index) {
     }
     return new THREE.Vector3(Number(p[0]), Number(p[1]), 0);
   });
-  console.log(arr, 'arrrrrrrrrrrr');
   
   return arr;
 }
 // 绘制线条
 function drawLine(points, color, segIndex, lineIndex, type, segmentId) {
-  const curve = new THREE.CatmullRomCurve3(points);
+  // const curve = new THREE.CatmullRomCurve3(points);
   const material_main = new THREE.LineBasicMaterial({
     color: color,
     linewidth: 2,
   });
-  const geometry_main = new THREE.BufferGeometry().setFromPoints(curve.getPoints(points.length * 10));
-  // const geometry_main = new THREE.BufferGeometry().setFromPoints(points);
+  // const geometry_main = new THREE.BufferGeometry().setFromPoints(curve.getPoints(points.length * 10));
+  const geometry_main = new THREE.BufferGeometry().setFromPoints(points);
   const line_main = new THREE.Line(geometry_main, material_main);
   line_main.name = `yh_${segIndex}_${type}_${lineIndex}`;
   line_main.userData.yhInfo = {
@@ -469,7 +481,7 @@ function handleCircles(data) {
   }
   data.points.map((ele, index) => {
     let p = ele.split(",");
-    drawCircle(new THREE.Vector3(Number(p[0]), Number(p[1]), 0.2), index);
+    drawCircle(new THREE.Vector3(Number(p[0]), Number(p[1]), zPoint), index);
   });
 }
 function clear(group) {
@@ -535,6 +547,10 @@ function uploadFile(event) {
   };
   reader.readAsText(file);
 }
+// 保存文件
+function save() {
+  downFile(yhData, 'yh_test.json')
+}
 // 清除所有文件绘制的线条
 function clearAll() {
   initSelect();
@@ -591,7 +607,7 @@ function setView() {
           @change="uploadFile"
         />
       </el-button>
-      <el-button type="success" class="save_btn">保存文件</el-button>
+      <el-button type="success" class="save_btn" @click="save">保存文件</el-button>
     </div>
     <el-button type="primary" class="init_btn" @click="setView">一键复位</el-button>
   </div>
