@@ -12,34 +12,45 @@ import { MeshLine, MeshLineMaterial } from "three.meshline";
 
 let scene, camera, renderer, controls, raycaster;
 const mouse = new THREE.Vector2();
-let yhLines = new THREE.Group();
-let yhCircles = new THREE.Group();
-let yhRoad = new THREE.Group();
+let yhLines = new THREE.Group(),
+  yhCircles = new THREE.Group(),
+  yhStopLines = new THREE.Group(),
+  yhRoad = new THREE.Group();
 let origin_utm_x = 456788.630270388,
-  origin_utm_y = 4426624.75945682;
-let max_p = [0, 0],
-  min_p = [0, 0];
-let colors = {
-  lanes: "red",
-  marking_list: "blue",
-  selectLine: "pink",
-  selectCircle: "green",
-};
+  origin_utm_y = 4426624.75945682,
+  max_p = [0, 0],
+  min_p = [0, 0],
+  zPoint = 0.2,
+  colors = {
+    lanes: "red",
+    marking_list: "blue",
+    selectLine: "pink",
+    selectCircle: "green",
+    stoplines: "black",
+  };
 let selectData = ref({
     data: {}, // 选中线原始数据
     lineObj: null, // 选中的线元素
-    circleObj: null, // 选中的点元素
     info: {}, // 选中的线元素信息
-    circleIndex: -1, // 选中的点元素下标
     lanes: new Map(), // lanes转换过的数组
     marking_list: new Map(), // marking_list转换过的数组
     movePoints: [], // 用来存放当前选定线条的数据
   }),
+  selectStop = ref({
+    lineObj: null,
+    data: {},
+    movePoints: [],
+    points: new Map(),
+  }),
+  selectCircle = ref({
+    circleIndex: -1, // 选中的点元素下标
+    circleObj: null, // 选中的点元素
+  }),
+  selectYHtype = ref(""),
   yhData = jsonData,
   isDragging = ref(false),
-  dialogVisible = ref(false);
-let fileName = ref("");
-let zPoint = 0.2;
+  dialogVisible = ref(false),
+  fileName = ref("");
 
 init();
 animate();
@@ -98,8 +109,12 @@ function init() {
   // 添加坐标轴
   const axesHelper = new THREE.AxesHelper(5);
   scene.add(axesHelper);
+  // 绘制对比road
   handleRoad();
+  // 绘制segments中lanes和marking_list
   handleDate(yhData.segments);
+  handleStopLine(yhData.stoplines);
+  // 设置视角
   setView();
 
   // 初始化 Raycaster
@@ -126,51 +141,79 @@ function onMouseDown(event) {
     const intersects = raycaster.intersectObjects([
       ...yhLines.children,
       ...yhCircles.children,
+      ...yhStopLines.children,
     ]);
     if (intersects.length > 0) {
-      console.log("选中:", intersects[0].object.userData, selectData.value);
-      let info = intersects[0].object.userData.yhInfo;
-      if (info.type === "line") {
-        if (
-          info.segmentId === selectData.value.info.segmentId &&
-          info.lineType === selectData.value.info.lineType &&
-          info.lineIndex === selectData.value.info.lineIndex
-        )
-          return;
-        if (selectData.value.lineObj) {
-          selectData.value.lineObj.material.color.setStyle(
-            colors[selectData.value.info.lineType]
-          );
-        }
-        selectData.value.lineObj = findLine(
-          yhLines,
-          `yh_${info.segIndex}_${info.lineType}_${info.lineIndex}`
-        );
-        selectData.value.info = info;
-        selectData.value.data = findData(info);
-        selectData.value.movePoints = selectData.value[info.lineType].get(
-          info.segmentId
-        )[info.lineIndex];
+      let userData = intersects[0].object.userData;
+      console.log("选中:", userData, selectData.value.info);
+      let yhType = userData.yhType;
 
-        handleCircles(selectData.value.data);
-        selectData.value.lineObj.material.color.setStyle(colors.selectLine);
-      } else if (info.type === "circle") {
-        if (selectData.value.circleObj) {
-          selectData.value.circleObj.material.color.setStyle("red");
+      if (userData.eleType === "line") {
+        if (yhType == "marking_list" || yhType == "lanes") {
+          let info = userData.yhInfo;
+          if (
+            yhType === selectYHtype.value &&
+            info.segmentId === selectData.value.info.segmentId &&
+            info.lineIndex === selectData.value.info.lineIndex
+          )
+            return;
+
+          if (selectData.value.lineObj) {
+            selectData.value.lineObj.material.color.setStyle(
+              colors[selectYHtype.value]
+            );
+          }
+          selectYHtype.value = yhType;
+          selectData.value.lineObj = findLine(
+            yhLines,
+            `yh_${info.segIndex}_${yhType}_${info.lineIndex}`
+          );
+          selectData.value.info = info;
+          selectData.value.data = findData(info);
+          selectData.value.movePoints = selectData.value[yhType].get(
+            info.segmentId
+          )[info.lineIndex];
+
+          handleCircles(selectData.value.data);
+          selectData.value.lineObj.material.color.setStyle(colors.selectLine);
         }
-        selectData.value.circleObj = findLine(
+        if (yhType == "stoplines") {
+          selectYHtype.value = yhType;
+          let objData = userData.objData;
+          selectStop.value.data = yhData.stoplines.filter((item) => {
+            return item.id === objData.id;
+          })[0];
+          selectStop.value.lineObj = findLine(
+            yhStopLines,
+            `yh_stoplines_${objData.id}`
+          );
+          selectStop.value.movePoints = selectStop.value.points.get(objData.id);
+          handleCircles(selectStop.value.data);
+          selectStop.value.lineObj.material.color.setStyle(colors.selectLine);
+          console.log(selectStop.value, "selectStop.value");
+        }
+      } else if (userData.eleType === "circle") {
+        let info = intersects[0].object.userData.yhInfo;
+        if (selectCircle.value.circleObj) {
+          selectCircle.value.circleObj.material.color.setStyle("red");
+        }
+        selectCircle.value.circleObj = findLine(
           yhCircles,
           `yh_circle_${info.pointIndex}`
         );
         isDragging.value = true;
-        selectData.value.circleIndex = info.pointIndex;
-        selectData.value.circleObj.material.color.setStyle(colors.selectCircle);
+        selectCircle.value.circleIndex = info.pointIndex;
+        selectCircle.value.circleObj.material.color.setStyle(
+          colors.selectCircle
+        );
       }
     } else {
       if (selectData.value.lineObj) {
-        selectData.value.lineObj.material.color.setStyle(
-          colors[selectData.value.info.lineType]
-        );
+        selectData.value.lineObj.material.color.setStyle(colors[selectYHtype]);
+        initSelect();
+      }
+      if (selectStop.value.lineObj) {
+        selectStop.value.lineObj.material.color.setStyle(colors[selectYHtype]);
         initSelect();
       }
     }
@@ -181,10 +224,14 @@ function initSelect() {
   clear(yhCircles);
   selectData.value.data = {};
   selectData.value.lineObj = null;
-  selectData.value.circleObj = null;
   selectData.value.info = {};
-  selectData.value.circleIndex = -1;
   selectData.value.movePoints = [];
+  selectCircle.value.circleIndex = -1;
+  selectCircle.value.circleObj = null;
+  selectYHtype.value = "";
+  selectStop.value.lineObj = null;
+  selectStop.value.data = {};
+  selectStop.value.movePoints = [];
 }
 function findLine(group, name) {
   return group.children.filter((ele) => {
@@ -195,7 +242,7 @@ function onMouseMove(event) {
   event.preventDefault();
   if (isDragging.value) {
     const intersection = getWordPoint(event.clientX, event.clientY);
-    const selectedCircle = yhCircles.children[selectData.value.circleIndex];
+    const selectedCircle = yhCircles.children[selectCircle.value.circleIndex];
     if (selectedCircle) {
       const attribute = selectedCircle.geometry.attributes.position;
 
@@ -205,16 +252,34 @@ function onMouseMove(event) {
       // 更新几何体的包围盒（确保射线检测正确）
       selectedCircle.geometry.computeBoundingBox();
       selectedCircle.geometry.computeBoundingSphere();
-      let points = selectData.value.movePoints;
+      let points = [],
+        lineObj = null;
 
-      points[selectData.value.circleIndex] = new THREE.Vector3(
+      if (
+        selectYHtype.value === "marking_list" ||
+        selectYHtype.value == "lanes"
+      ) {
+        points = selectData.value.movePoints;
+        lineObj = selectData.value.lineObj;
+      } else if (selectYHtype.value == "stoplines") {
+        points = selectStop.value.movePoints;
+        lineObj = selectStop.value.lineObj;
+      }
+      points[selectCircle.value.circleIndex] = new THREE.Vector3(
         intersection.x,
         intersection.y,
         0.1
       );
-      selectData.value.lineObj.geometry.setFromPoints(points);
-      selectData.value.movePoints = points;
-      selectData.value.lineObj.geometry.attributes.position.needsUpdate = true; // 通知更新
+      lineObj.geometry.setFromPoints(points);
+      lineObj.geometry.attributes.position.needsUpdate = true; // 通知更新
+      if (
+        selectYHtype.value === "marking_list" ||
+        selectYHtype.value == "lanes"
+      ) {
+        selectData.value.movePoints = points;
+      } else {
+        selectStop.value.movePoints = points;
+      }
     } else {
       console.log(console.warn("未找到有效的圆对象"));
     }
@@ -225,30 +290,42 @@ function onMouseMove(event) {
 function onMouseUp(event) {
   if (isDragging.value) {
     isDragging.value = false;
-    let points = selectData.value[selectData.value.info.lineType].get(
-      selectData.value.info.segmentId
-    );
-    points[selectData.value.info.lineIndex] = selectData.value.movePoints;
-    selectData.value[selectData.value.info.lineType].set(
-      selectData.value.info.segmentId,
-      points
-    );
-    let point =
-      points[selectData.value.info.lineIndex][selectData.value.circleIndex];
+    let points = [];
+    if (selectYHtype.value == "marking_list" || selectYHtype.value == "lanes") {
+      points = selectData.value[selectYHtype.value].get(
+        selectData.value.info.segmentId
+      );
+      points[selectData.value.info.lineIndex] = selectData.value.movePoints;
+      selectData.value[selectYHtype.value].set(
+        selectData.value.info.segmentId,
+        points
+      );
+      let point =
+        points[selectData.value.info.lineIndex][selectCircle.value.circleIndex];
+      selectData.value.data.points[
+        selectCircle.value.circleIndex
+      ] = `${point.x},${point.y}`;
 
-    selectData.value.data.points[
-      selectData.value.circleIndex
-    ] = `${point.x},${point.y}`;
+      yhData.segments[selectData.value.info.segIndex][selectYHtype.value][
+        selectData.value.info.lineIndex
+      ] = selectData.value.data;
+    }
+    if (selectYHtype.value == "stoplines") {
+      points = selectStop.value.points.get(selectStop.value.data.id);
+      points[selectData.value.info.lineIndex] = selectStop.value.movePoints;
+      selectStop.value.points.set(selectStop.value.data.id, points);
+      let point = selectStop.value.movePoints[selectCircle.value.circleIndex];
+      selectStop.value.data.geometry[
+        selectCircle.value.circleIndex
+      ] = `${point.x},${point.y}`;
+    }
 
-    yhData.segments[selectData.value.info.segIndex][
-      selectData.value.info.lineType
-    ][selectData.value.info.lineIndex] = selectData.value.data;
     // handleDate(yhData.segments);
+    // handleStopLine(yhData.stoplines);
   }
 }
 // 双击事件
 function onDblclick(event) {
-  console.log(event, "eeee", getWordPoint(event.clientX, event.clientY));
   const point = getWordPoint(event.clientX, event.clientY);
   camera.position.set(point.x, point.y, 60);
   controls.target.set(point.x, point.y, 0.3);
@@ -267,7 +344,11 @@ function getWordPoint(clientX, clientY) {
 }
 function onKeyDown(event) {
   if (event.key === "Backspace" || event.key === "Delete") {
-    if (!selectData.value.lineObj) return;
+    if (
+      (!selectData.value.lineObj && selectYHtype.value === "lanes") ||
+      (!selectStop.value.lineObj && selectYHtype.value === "stoplines")
+    )
+      return;
     dialogVisible.value = true;
   } else if (dialogVisible.value && (event.key === "p" || event.key === "P")) {
     delPoint();
@@ -276,23 +357,23 @@ function onKeyDown(event) {
   }
 }
 function delPoint() {
-  if (selectData.value.circleIndex === -1) return;
-  let { info, data, lineObj, circleIndex, circleObj, movePoints } =
-    selectData.value;
+  if (selectCircle.value.circleIndex === -1) return;
+  let { info, data, lineObj, movePoints } = selectData.value;
+  let { circleIndex, circleObj } = selectCircle.value;
 
   movePoints.splice(circleIndex, 1);
-  let points = selectData.value[selectData.value.info.lineType].get(
+  let points = selectData.value[selectYHtype.value].get(
     selectData.value.info.segmentId
   );
   points[info.lineIndex] = movePoints;
-  selectData.value[selectData.value.info.lineType].set(
+  selectData.value[selectYHtype.value].set(
     selectData.value.info.segmentId,
     points
   );
   data.points.splice(circleIndex, 1);
   lineObj = findLine(
     yhLines,
-    `yh_${info.segIndex}_${info.lineType}_${info.lineIndex}`
+    `yh_${info.segIndex}_${selectYHtype.value}_${info.lineIndex}`
   );
   lineObj.geometry.dispose();
   lineObj.material.dispose();
@@ -301,21 +382,22 @@ function delPoint() {
   clear(yhCircles);
   circleObj = null;
   circleIndex = -1;
-  console.log(selectData.value, "selectData.value");
 
   if (data.points.length) {
     drawLine(
       handleLineData(data.points),
-      colors[info.lineType],
+      colors[selectYHtype.value],
       info.segIndex,
       info.lineIndex,
-      info.lineType,
-      info.segmentId
+      selectYHtype.value,
+      info.segmentId,
+      yhLines
     );
     lineObj = findLine(
       yhLines,
-      `yh_${info.segIndex}_${info.lineType}_${info.lineIndex}`
+      `yh_${info.segIndex}_${selectYHtype.value}_${info.lineIndex}`
     );
+    lineObj.material.color.setStyle(colors.selectLine);
     selectData.value.lineObj = lineObj;
     handleCircles(data);
   }
@@ -323,29 +405,67 @@ function delPoint() {
   dialogVisible.value = false;
 }
 function delLine() {
-  if (!selectData.value.lineObj) return;
-  yhData.segments[selectData.value.info.segIndex][
-    selectData.value.info.lineType
-  ].splice(selectData.value.info.lineIndex, 1);
-  let points = selectData.value[selectData.value.info.lineType].get(
-    selectData.value.info.segmentId
-  );
-  let info = selectData.value.info;
-  points.splice(selectData.value.info.lineIndex, 1);
-  selectData.value[selectData.value.info.lineType].set(
-    selectData.value.info.segmentId,
-    points
-  );
+  if (selectYHtype.value == "lanes" || selectYHtype.value == "marking_list") {
+    if (!selectData.value.lineObj) return;
+    yhData.segments[selectData.value.info.segIndex][selectYHtype.value].splice(
+      selectData.value.info.lineIndex,
+      1
+    );
+    let points = selectData.value[selectYHtype.value].get(
+      selectData.value.info.segmentId
+    );
+    let info = selectData.value.info;
+    let lines = [];
+    points.forEach((item, index) => {
+      lines.push(
+        findLine(yhLines, `yh_${info.segIndex}_${selectYHtype.value}_${index}`)
+      );
+    });
+    lines.forEach((item) => {
+      item.geometry.dispose();
+      item.material.dispose();
+      yhLines.remove(item);
+      scene.remove(item);
+    });
 
-  let line = findLine(
-    yhLines,
-    `yh_${info.segIndex}_${info.lineType}_${info.lineIndex}`
-  );
+    points.splice(selectData.value.info.lineIndex, 1);
+    points.forEach((item, index) => {
+      drawLine(
+        item,
+        colors[selectYHtype.value],
+        info.segIndex,
+        index,
+        selectYHtype.value,
+        info.segmentId,
+        yhLines
+      );
+    });
+    selectData.value[selectYHtype.value].set(
+      selectData.value.info.segmentId,
+      points
+    );
+  }
+  if (selectYHtype.value == "stoplines") {
+    if (!selectStop.value.lineObj) return;
+    let index = -1;
+    yhData.stoplines.map((ele, i) => {
+      if (ele.id === selectStop.value.data.id) {
+        index = i;
+      }
+    });
+    console.log(index, "index======", selectStop.value, yhData.stoplines);
 
-  line.geometry.dispose();
-  line.material.dispose();
-  yhLines.remove(line);
-  scene.remove(line);
+    yhData.stoplines.splice(index, 1);
+    let lineObj = findLine(
+      yhStopLines,
+      `yh_${selectYHtype.value}_${selectStop.value.data.id}`
+    );
+    lineObj.geometry.dispose();
+    lineObj.material.dispose();
+    yhStopLines.remove(lineObj);
+    scene.remove(lineObj);
+    selectStop.value.points.delete(selectStop.value.data.id);
+  }
   initSelect();
   dialogVisible.value = false;
 }
@@ -382,7 +502,6 @@ function handleRoad() {
     scene.add(yhRoad);
   });
 }
-function drawWLine() {}
 function handleDate(segments) {
   segments.forEach((item, index) => {
     if (item.lanes.length) {
@@ -396,7 +515,15 @@ function handleDate(segments) {
           } else {
             selectData.value.lanes.set(item.segmentId, [arr]);
           }
-          drawLine(arr, colors["lanes"], index, i, "lanes", item.segmentId);
+          drawLine(
+            arr,
+            colors["lanes"],
+            index,
+            i,
+            "lanes",
+            item.segmentId,
+            yhLines
+          );
         }
       });
     }
@@ -417,11 +544,25 @@ function handleDate(segments) {
             index,
             i,
             "marking_list",
-            item.segmentId
+            item.segmentId,
+            yhLines
           );
         }
       });
     }
+  });
+}
+function handleStopLine(stoplines) {
+  stoplines.forEach((item, index) => {
+    const arr = handleLineData(item.geometry);
+    if (selectStop.value.points.has(item.id)) {
+      const points = selectStop.value.points.get(item.id);
+      points.push(arr);
+      selectStop.value.points.set(item.id, points);
+    } else {
+      selectStop.value.points.set(item.id, arr);
+    }
+    drawLine(arr, colors.stoplines, -1, -1, "stoplines", -1, yhStopLines, item);
   });
 }
 function handleLineData(points, sign = false, index) {
@@ -444,42 +585,66 @@ function handleLineData(points, sign = false, index) {
   return arr;
 }
 // 绘制线条
-function drawLine(points, color, segIndex, lineIndex, type, segmentId) {
-  // const curve = new THREE.CatmullRomCurve3(points);
+function drawLine(
+  points,
+  color,
+  segIndex,
+  lineIndex,
+  type,
+  segmentId,
+  group,
+  objData = null
+) {
   const material_main = new THREE.LineBasicMaterial({
     color: color,
     linewidth: 2,
   });
-  // const geometry_main = new THREE.BufferGeometry().setFromPoints(curve.getPoints(points.length * 10));
   const geometry_main = new THREE.BufferGeometry().setFromPoints(points);
   const line_main = new THREE.Line(geometry_main, material_main);
-  line_main.name = `yh_${segIndex}_${type}_${lineIndex}`;
-  line_main.userData.yhInfo = {
-    segIndex: segIndex,
-    lineIndex: lineIndex,
-    lineType: type,
-    segmentId: segmentId,
-    type: "line",
-  };
+  line_main.userData.yhType = type;
+  line_main.userData.eleType = "line";
 
-  yhLines.add(line_main);
-  scene.add(yhLines);
+  if (objData) {
+    line_main.userData.objData = objData;
+    line_main.name = `yh_stoplines_${objData.id}`;
+  } else {
+    line_main.name = `yh_${segIndex}_${type}_${lineIndex}`;
+    line_main.userData.yhInfo = {
+      segIndex: segIndex,
+      lineIndex: lineIndex,
+      lineType: type,
+      segmentId: segmentId,
+      type: "line",
+    };
+  }
+  group.add(line_main);
+  scene.add(group);
 }
 function findData(info) {
-  let data = yhData.segments[info.segIndex][info.lineType][info.lineIndex];
+  let data = yhData.segments[info.segIndex][selectYHtype.value][info.lineIndex];
   if (yhData.segments[info.segIndex].segmentId == info.segmentId) {
     return data;
   } else {
     return null;
   }
 }
-function handleCircles(data) {
-  if (yhCircles.children.length) {
-    clear(yhCircles);
+function handleCircles(data, group = yhCircles) {
+  if (group.children.length) {
+    clear(group);
   }
-  data.points.map((ele, index) => {
+  let points = [];
+  if (data.points) {
+    points = data.points;
+  } else {
+    points = data.geometry;
+  }
+  points.map((ele, index) => {
     let p = ele.split(",");
-    drawCircle(new THREE.Vector3(Number(p[0]), Number(p[1]), zPoint), index);
+    drawCircle(
+      new THREE.Vector3(Number(p[0]), Number(p[1]), zPoint),
+      index,
+      group
+    );
   });
 }
 function clear(group) {
@@ -491,7 +656,7 @@ function clear(group) {
   });
   group.clear();
 }
-function drawCircle(positions, index) {
+function drawCircle(positions, index, group) {
   let geometry = new THREE.BufferGeometry().setFromPoints([positions]);
   // 创建点的材质
   const material = new THREE.PointsMaterial({
@@ -501,14 +666,14 @@ function drawCircle(positions, index) {
   });
   // 创建点
   const points = new THREE.Points(geometry, material);
+  points.userData.eleType = "circle";
   points.userData.yhInfo = {
     pointIndex: index,
     type: "circle",
   };
   points.name = `yh_circle_${index}`;
-  yhCircles.add(points);
-
-  scene.add(yhCircles);
+  group.add(points);
+  scene.add(group);
 }
 function animate() {
   requestAnimationFrame(animate);
@@ -553,9 +718,11 @@ function save() {
 function clearAll() {
   initSelect();
   clear(yhLines);
+  clear(yhStopLines);
   clear(yhRoad);
   selectData.value.lanes.clear();
   selectData.value.marking_list.clear();
+  selectStop.value.points.clear();
 }
 // 设置视角
 function setView() {
@@ -576,7 +743,10 @@ function setView() {
   <!-- <div ref="canvasContainer" class="main_box"></div> -->
   <div>
     <el-dialog v-model="dialogVisible" title="请选择你要删除的类型" width="500">
-      <div class="dialog_text">
+      <div
+        class="dialog_text"
+        v-show="selectYHtype == 'lanes' || selectYHtype == 'marking_list'"
+      >
         <div class="text_point">删除点：</div>
         删除掉选定的那个点
         <el-button type="warning" @click="delPoint">删除点( P )</el-button>
