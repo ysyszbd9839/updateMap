@@ -8,7 +8,7 @@ import { Line2 } from "three/addons/lines/Line2.js";
 import { LineMaterial } from "three/addons/lines/LineMaterial.js";
 import { LineGeometry } from "three/addons/lines/LineGeometry.js";
 import { wgs2utm, downFile } from "./utils/utils.js";
-import { MeshLine, MeshLineMaterial } from 'three.meshline';
+import { MeshLine, MeshLineMaterial } from "three.meshline";
 
 let scene, camera, renderer, controls, raycaster;
 const mouse = new THREE.Vector2();
@@ -39,17 +39,17 @@ let selectData = ref({
   isDragging = ref(false),
   dialogVisible = ref(false);
 let fileName = ref("");
-let zPoint= 1.8
+let zPoint = 0.2;
 
 init();
 animate();
 onMounted(() => {});
 function init() {
   ElMessage({
-    message: '右键拖动 / 滚轮缩放 / 左键选择 / 双击放大到指定位置',
-    type: 'warning',
-    duration: 0
-  })
+    message: "右键拖动 / 滚轮缩放 / 左键选择 / 双击放大到指定位置",
+    type: "warning",
+    duration: 0,
+  });
   // 初始化场景
   scene = new THREE.Scene();
   scene.background = new THREE.Color(0xeeeeee);
@@ -71,7 +71,7 @@ function init() {
 
   // 轨道控制器
   controls = new OrbitControls(camera, renderer.domElement);
-  
+
   controls.minDistance = 0.01; // 设置最小缩放距离
   // 禁止围绕 X 和 Y 轴旋转
   controls.enableRotate = true; // 启用旋转
@@ -83,7 +83,7 @@ function init() {
     RIGHT: THREE.MOUSE.PAN, // 右键拖动画布
     MIDDLE: THREE.MOUSE.DOLLY, // 滚轮缩放
   };
-  
+
   // 保留平移和缩放
   controls.enablePan = true; // 启用平移（右键拖动）
   controls.enableZoom = true; // 启用缩放
@@ -128,7 +128,7 @@ function onMouseDown(event) {
       ...yhCircles.children,
     ]);
     if (intersects.length > 0) {
-      console.log("选中:", intersects[0], selectData.value);
+      console.log("选中:", intersects[0].object.userData, selectData.value);
       let info = intersects[0].object.userData.yhInfo;
       if (info.type === "line") {
         if (
@@ -194,11 +194,11 @@ function findLine(group, name) {
 function onMouseMove(event) {
   event.preventDefault();
   if (isDragging.value) {
-    const intersection = getWordPoint(event.clientX, event.clientY)
+    const intersection = getWordPoint(event.clientX, event.clientY);
     const selectedCircle = yhCircles.children[selectData.value.circleIndex];
     if (selectedCircle) {
       const attribute = selectedCircle.geometry.attributes.position;
-      
+
       // 更新点的坐标（假设点的索引为 0）
       attribute.setXYZ(0, intersection.x, intersection.y, zPoint);
       attribute.needsUpdate = true;
@@ -248,8 +248,8 @@ function onMouseUp(event) {
 }
 // 双击事件
 function onDblclick(event) {
-  console.log(event, 'eeee', getWordPoint(event.clientX, event.clientY));
-  const point = getWordPoint(event.clientX, event.clientY)
+  console.log(event, "eeee", getWordPoint(event.clientX, event.clientY));
+  const point = getWordPoint(event.clientX, event.clientY);
   camera.position.set(point.x, point.y, 60);
   controls.target.set(point.x, point.y, 0.3);
   camera.updateProjectionMatrix();
@@ -382,9 +382,7 @@ function handleRoad() {
     scene.add(yhRoad);
   });
 }
-function drawWLine() {
-
-}
+function drawWLine() {}
 function handleDate(segments) {
   segments.forEach((item, index) => {
     if (item.lanes.length) {
@@ -429,20 +427,20 @@ function handleDate(segments) {
 function handleLineData(points, sign = false, index) {
   let arr = points.map((ele, i) => {
     let p = ele.split(",");
-    if(sign) {
+    if (sign) {
       if (index === 0 && i === 0) {
-        max_p = [Number(p[0]), Number(p[1])]
-        min_p = [Number(p[0]), Number(p[1])]
-      }else {
-        max_p[0] = Math.max(max_p[0], Number(p[0]))
-        max_p[1] = Math.max(max_p[1], Number(p[1]))
-        min_p[0] = Math.min(min_p[0], Number(p[0]))
-        min_p[1] = Math.min(min_p[1], Number(p[1]))
+        max_p = [Number(p[0]), Number(p[1])];
+        min_p = [Number(p[0]), Number(p[1])];
+      } else {
+        max_p[0] = Math.max(max_p[0], Number(p[0]));
+        max_p[1] = Math.max(max_p[1], Number(p[1]));
+        min_p[0] = Math.min(min_p[0], Number(p[0]));
+        min_p[1] = Math.min(min_p[1], Number(p[1]));
       }
     }
     return new THREE.Vector3(Number(p[0]), Number(p[1]), 0);
   });
-  
+
   return arr;
 }
 // 绘制线条
@@ -549,7 +547,7 @@ function uploadFile(event) {
 }
 // 保存文件
 function save() {
-  downFile(yhData, 'yh_test.json')
+  downFile(yhData, "yh_test.json");
 }
 // 清除所有文件绘制的线条
 function clearAll() {
@@ -566,7 +564,7 @@ function setView() {
   const width = max_p[0] - min_p[0];
   const height = max_p[1] - min_p[1];
   const distance = Math.max(width, height) * 4.5; // 假设是正交投影
-  
+
   camera.position.set(centerX, centerY, distance);
   controls.target.set(centerX, centerY, 0.3);
   camera.updateProjectionMatrix();
@@ -607,9 +605,13 @@ function setView() {
           @change="uploadFile"
         />
       </el-button>
-      <el-button type="success" class="save_btn" @click="save">保存文件</el-button>
+      <el-button type="success" class="save_btn" @click="save"
+        >保存文件</el-button
+      >
     </div>
-    <el-button type="primary" class="init_btn" @click="setView">一键复位</el-button>
+    <el-button type="primary" class="init_btn" @click="setView"
+      >一键复位</el-button
+    >
   </div>
 </template>
 
